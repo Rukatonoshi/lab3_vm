@@ -18,7 +18,19 @@ typedef struct {
 
 // DEFINITION
 static const Instruction init_table[] = {
-    {0x00, "binop", 1, 0},
+    {0x01, "binop_add", 1, 0},      // PLUS
+    {0x02, "binop_sub", 1, 0},      // MINUS
+    {0x03, "binop_mul", 1, 0},      // MULTIPLY
+    {0x04, "binop_div", 1, 0},      // DIVIDE
+    {0x05, "binop_rem", 1, 0},      // REMAINDER
+    {0x06, "binop_lt", 1, 0},       // LESS
+    {0x07, "binop_le", 1, 0},       // LESS_EQUAL
+    {0x08, "binop_gt", 1, 0},       // GREATER
+    {0x09, "binop_ge", 1, 0},       // GREATER_EQUAL
+    {0x0A, "binop_eq", 1, 0},       // EQUAL
+    {0x0B, "binop_ne", 1, 0},       // NOT_EQUAL
+    {0x0C, "binop_and", 1, 0},      // AND
+    {0x0D, "binop_or", 1, 0},       // OR
     {0x10, "const", 4, 0},
     {0x11, "xstring", 4, 0},
     {0x12, "sexp", 8, 0},
