@@ -1,3 +1,4 @@
+// src/frequency_analyzer.c
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -5,22 +6,23 @@
 #include "byte_file.h"
 #include "uthash.h"
 
-// Hash table for counting sequences
+// Hash table entry for counting byte sequences
 typedef struct {
     uint8_t *bytes;   // Copy of the byte sequence
-    size_t len;
-    uint32_t count;
-    UT_hash_handle hh;
+    size_t len;       // Length of the sequence in bytes
+    uint32_t count;   // Frequency of this sequence
+    UT_hash_handle hh; // Hash table handle
 } CountEntry;
 
+// Global hash table for sequence counts
 static CountEntry *counts = NULL;
 
-// Helper function: copy bytes from src to dst
+// Helper: copy bytes from src to dst
 static inline void copy_bytes(uint8_t *dst, const uint8_t *src, size_t len) {
     memcpy(dst, src, len);
 }
 
-// Increment the count for a given byte sequence
+// Increment count for a given byte sequence
 static void increment_count(const uint8_t *data, size_t len) {
     CountEntry *entry;
     HASH_FIND(hh, counts, data, len, entry);
@@ -35,9 +37,19 @@ static void increment_count(const uint8_t *data, size_t len) {
     entry->count++;
 }
 
-// Check if an instruction breaks a sequence (jump, conditional jump, halt)
-static inline bool is_breaker(const Instruction* inst) {
-    return (inst->flags & (INSTR_FLAG_JUMP | INSTR_FLAG_CJUMP | INSTR_FLAG_HALT));
+// Check if instruction is a control transfer (jump, call, etc.)
+static inline bool is_control_transfer(const Instruction* inst) {
+    return (inst->flags & (INSTR_FLAG_JUMP | INSTR_FLAG_CJUMP));
+}
+
+// Check if instruction is terminal (ends execution)
+static inline bool is_terminal(const Instruction* inst) {
+    return (inst->flags & INSTR_FLAG_HALT);
+}
+
+// Check if instruction breaks a sequence (jump, call, halt)
+static inline bool split_after(const Instruction* inst) {
+    return (inst->flags & INSTR_FLAG_HALT);
 }
 
 // Get instruction by opcode; returns NULL if unknown
@@ -46,7 +58,16 @@ static inline const Instruction* get_instruction(uint8_t opcode) {
     return instructions[opcode];
 }
 
-// Comparison function for sorting entries by frequency (descending) and byte sequence (lexicographic)
+// Return length of instruction in bytes, or 0 if unknown
+static inline size_t instruction_length(const u_int8_t *code, size_t max_len) {
+    if (max_len < 1) return 0;
+    uint8_t opcode = code[0];
+    const Instruction* inst = get_instruction(opcode);
+    if (!inst) return 0;
+    return 1 + inst->arg_size;
+}
+
+// Compare two entries: by frequency (descending), then by byte sequence (lexicographic)
 static int compare_entries(const void *a, const void *b) {
     const CountEntry *ea = *(const CountEntry**)a;
     const CountEntry *eb = *(const CountEntry**)b;
@@ -67,13 +88,49 @@ static int compare_entries(const void *a, const void *b) {
     return 0;
 }
 
-// Return the length of an instruction in bytes, or 0 if unknown
-static inline size_t instruction_length(const u_int8_t *code, size_t max_len) {
-    if (max_len < 1) return 0;
-    uint8_t opcode = code[0];
-    const Instruction* inst = get_instruction(opcode);
-    if (!inst) return 0;
-    return 1 + inst->arg_size;
+// Read a 32-bit little-endian integer from raw bytes
+static uint32_t read_uint32(const uint8_t *data) {
+    return (data[0] << 0) |
+           (data[1] << 8) |
+           (data[2] << 16) |
+           (data[3] << 24);
+}
+
+// Print a sequence of instructions with names and arguments
+static void print_sequence(const uint8_t *data, size_t len) {
+    size_t pos = 0;
+    int first = 1;
+    while (pos < len) {
+        const Instruction* inst = get_instruction(data[pos]);
+        if (!inst) {
+            if (first) {
+                printf("<unknown>");
+            } else {
+                printf(", <unknown>");
+            }
+            pos++;
+            continue;
+        }
+
+        if (!first) {
+            printf(", ");
+        }
+        printf("%s", inst->name);
+
+        const uint8_t *args = data + pos + 1;
+        size_t arg_size = inst->arg_size;
+
+        // Print arguments as 32-bit integers (little-endian)
+        for (size_t i = 0; i < arg_size; i += 4) {
+            if (i + 4 <= arg_size) {
+                uint32_t val = read_uint32(args + i);
+                printf(" %u", val);
+            }
+        }
+
+        pos += 1 + arg_size;
+        first = 0;
+    }
 }
 
 // Main frequency analysis function
@@ -81,6 +138,13 @@ void analyze_frequency(byte_file *bf) {
     // Track reachable code bytes
     uint8_t *reachable = (uint8_t*)calloc(bf->code_size, 1);
     if (!reachable) {
+        fprintf(stderr, "Out of memory\n");
+        exit(1);
+    }
+
+    // Track jump targets (to enqueue them)
+    uint8_t *jump_target = (uint8_t*)calloc(bf->code_size, 1);
+    if (!jump_target) {
         fprintf(stderr, "Out of memory\n");
         exit(1);
     }
@@ -94,7 +158,7 @@ void analyze_frequency(byte_file *bf) {
 
     uint32_t qhead = 0, qtail = 0;
 
-    // Enqueue all public symbols
+    // Enqueue all public symbols (entry points)
     for (uint32_t i = 0; i < bf->public_symbols_number; i++) {
         uint32_t addr = get_public_offset(bf, i);
         if (addr >= bf->code_size) {
@@ -124,8 +188,8 @@ void analyze_frequency(byte_file *bf) {
             continue;
         }
 
-        // If it's a jump (unconditional or conditional), enqueue target
-        if (inst->flags & (INSTR_FLAG_JUMP | INSTR_FLAG_CJUMP)) {
+        // If it's a control transfer (jump, call), enqueue target
+        if (is_control_transfer(inst)) {
             uint32_t target = 0;
             memcpy(&target, code + 1, 4); // 4-byte target offset
             if (target >= bf->code_size) {
@@ -136,8 +200,8 @@ void analyze_frequency(byte_file *bf) {
             }
         }
 
-        // If not a terminal instruction, enqueue next instruction
-        if (!(inst->flags & INSTR_FLAG_HALT)) {
+        // If not terminal, enqueue next instruction
+        if (!is_terminal(inst)) {
             uint32_t next = addr + len;
             if (next < bf->code_size && !reachable[next]) {
                 reachable[next] = 1;
@@ -173,10 +237,10 @@ void analyze_frequency(byte_file *bf) {
             continue;
         }
 
-        // 1. Count current instruction (length 1)
+        // Count current instruction (length 1)
         increment_count(code, len);
 
-        // 2. Count pair with previous instruction (length 2)
+        // Count pair with previous instruction (length 2)
         if (prev_bytes) {
             size_t pair_len = prev_len + len;
             uint8_t *pair_bytes = (uint8_t*)malloc(pair_len);
@@ -186,8 +250,8 @@ void analyze_frequency(byte_file *bf) {
             free(pair_bytes);
         }
 
-        // 3. If instruction breaks the sequence, reset previous
-        if (is_breaker(inst)) {
+        // If instruction breaks the sequence, reset previous
+        if (split_after(inst)) {
             free(prev_bytes);
             prev_bytes = NULL;
             prev_len = 0;
@@ -226,9 +290,7 @@ void analyze_frequency(byte_file *bf) {
         entry = array[j];
         if (entry->count == 0) continue;
         printf("%u : ", entry->count);
-        for (size_t k = 0; k < entry->len; k++) {
-            printf("%02x ", entry->bytes[k]);
-        }
+        print_sequence(entry->bytes, entry->len);
         printf("\n");
     }
 
