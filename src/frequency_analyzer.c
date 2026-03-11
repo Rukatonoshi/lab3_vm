@@ -6,6 +6,8 @@
 #include "byte_file.h"
 #include "uthash.h"
 
+#define DEBUG_ANALYSIS 1
+
 // Hash table entry for counting byte sequences
 typedef struct {
     uint8_t *bytes;   // Copy of the byte sequence
@@ -39,17 +41,25 @@ static void increment_count(const uint8_t *data, size_t len) {
 
 // Check if instruction is a control transfer (jump, call, etc.)
 static inline bool is_control_transfer(const Instruction* inst) {
-    return (inst->flags & (INSTR_FLAG_JUMP | INSTR_FLAG_CJUMP));
+    return (inst->flags & (INSTR_FLAG_JUMP | INSTR_FLAG_CJUMP | INSTR_FLAG_CALL));
 }
 
 // Check if instruction is terminal (ends execution)
 static inline bool is_terminal(const Instruction* inst) {
-    return (inst->flags & INSTR_FLAG_HALT);
+    //return (inst->flags & INSTR_FLAG_HALT);
+    bool result = (inst->flags & INSTR_FLAG_HALT);
+    #ifdef DEBUG_ANALYSIS
+    if (DEBUG_ANALYSIS) {
+        printf("DEBUG: is_terminal check: opcode=%02x name=%s flags=%02x INSTR_FLAG_HALT=%02x result=%d\n",
+               inst->opcode, inst->name, inst->flags, INSTR_FLAG_HALT, result);
+    }
+    #endif
+    return result;
 }
 
 // Check if instruction breaks a sequence (jump, call, halt)
 static inline bool split_after(const Instruction* inst) {
-    return (inst->flags & INSTR_FLAG_HALT);
+    return (inst->flags & (INSTR_FLAG_HALT | INSTR_FLAG_BREAK));
 }
 
 // Get instruction by opcode; returns NULL if unknown
@@ -103,6 +113,7 @@ static void print_sequence(const uint8_t *data, size_t len) {
     while (pos < len) {
         const Instruction* inst = get_instruction(data[pos]);
         if (!inst) {
+            // TODO fail, not initilized instruction => garbage
             if (first) {
                 printf("<unknown>");
             } else {
@@ -133,6 +144,28 @@ static void print_sequence(const uint8_t *data, size_t len) {
     }
 }
 
+static void print_function_calls(byte_file *bf) {
+    printf("\n--- Function Calls ---\n");
+    for (uint32_t i = 0; i < bf->public_symbols_number; i++) {
+        const char* name = get_public_name(bf, i);
+        uint32_t offset = get_public_offset(bf, i);
+        printf("Function: %s at offset 0x%08x\n", name, offset);
+    }
+}
+
+static void print_reachability_stats(byte_file *bf, uint8_t *reachable) {
+    uint32_t reachable_count = 0;
+    for (uint32_t i = 0; i < bf->code_size; i++) {
+        if (reachable[i]) {
+            reachable_count++;
+        }
+    }
+    printf("\n--- Reachability Stats ---\n");
+    printf("Total code size: %u bytes\n", bf->code_size);
+    printf("Reachable instructions: %u\n", reachable_count);
+    printf("Reachable code: %.2f%%\n", (double)reachable_count / bf->code_size * 100);
+}
+
 // Main frequency analysis function
 void analyze_frequency(byte_file *bf) {
     // Track reachable code bytes
@@ -159,8 +192,11 @@ void analyze_frequency(byte_file *bf) {
     uint32_t qhead = 0, qtail = 0;
 
     // Enqueue all public symbols (entry points)
+    if (DEBUG_ANALYSIS) printf("DEBUG: Found %u public symbols\n", bf->public_symbols_number);
     for (uint32_t i = 0; i < bf->public_symbols_number; i++) {
         uint32_t addr = get_public_offset(bf, i);
+        const char* name = get_public_name(bf, i);
+        if (DEBUG_ANALYSIS) printf("DEBUG: Public symbol %s at offset 0x%08x\n", name, addr);
         if (addr >= bf->code_size) {
             fprintf(stderr, "Public symbol offset %u out of code bounds\n", addr);
             continue;
@@ -171,12 +207,19 @@ void analyze_frequency(byte_file *bf) {
         }
     }
 
+    uint32_t total_visited = 0;
+
     // BFS: propagate reachability
     while (qhead < qtail) {
         uint32_t addr = queue[qhead++];
+        total_visited++;
+
         const uint8_t *code = (const uint8_t*)bf->code_ptr + addr;
         size_t remaining = bf->code_size - addr;
         size_t len = instruction_length(code, remaining);
+
+        if (DEBUG_ANALYSIS) printf("DEBUG: Visiting addr 0x%08x, remaining=%zu, len=%zu\n", addr, remaining, len);
+
         if (len == 0) {
             fprintf(stderr, "Unknown instruction at offset 0x%08x\n", addr);
             continue;
@@ -188,6 +231,9 @@ void analyze_frequency(byte_file *bf) {
             continue;
         }
 
+        if (DEBUG_ANALYSIS) printf("DEBUG: Queue processing addr=0x%08x, name=%s, flags=0x%02x, is_terminal=%d\n", addr, inst->name, inst->flags, is_terminal(inst));
+
+
         // If it's a control transfer (jump, call), enqueue target
         if (is_control_transfer(inst)) {
             uint32_t target = 0;
@@ -197,6 +243,7 @@ void analyze_frequency(byte_file *bf) {
             } else if (!reachable[target]) {
                 reachable[target] = 1;
                 queue[qtail++] = target;
+                if (DEBUG_ANALYSIS) printf("DEBUG: Enqueued jump target 0x%08x\n", target);
             }
         }
 
@@ -206,16 +253,42 @@ void analyze_frequency(byte_file *bf) {
             if (next < bf->code_size && !reachable[next]) {
                 reachable[next] = 1;
                 queue[qtail++] = next;
+            } else {
+                if (DEBUG_ANALYSIS) printf("DEBUG: Terminal instruction, not enqueuing next\n");
             }
         }
+
+        if (DEBUG_ANALYSIS && total_visited % 100 == 0) {
+            printf("DEBUG: Visited %u addresses so far...\n", total_visited);
+        }
+    }
+
+    if (DEBUG_ANALYSIS) {
+        printf("DEBUG: Total visited addresses: %u\n", total_visited);
+        printf("DEBUG: Total reachable bytes: %u\n", bf->code_size);
+    }
+
+    // Calculate reachable bytes count
+    if (DEBUG_ANALYSIS) {
+        uint32_t reachable_count = 0;
+        for (uint32_t i = 0; i < bf->code_size; i++) {
+            if (reachable[i]) {
+                reachable_count++;
+            }
+        }
+        printf("DEBUG: Total reachable bytes: %u (%.2f%%)\n", reachable_count, 
+               (double)reachable_count / bf->code_size * 100);
     }
 
     free(queue);
 
     // Traverse reachable code and count sequences of length 1 and 2
     uint32_t i = 0;
+    uint32_t sequence_count = 0;
     uint8_t *prev_bytes = NULL;
     size_t prev_len = 0;
+
+    if (DEBUG_ANALYSIS) printf("\nDEBUG: Starting sequence counting...\n");
 
     while (i < bf->code_size) {
         if (!reachable[i]) {
@@ -227,18 +300,23 @@ void analyze_frequency(byte_file *bf) {
         size_t remaining = bf->code_size - i;
         size_t len = instruction_length(code, remaining);
         if (len == 0) {
+            if (DEBUG_ANALYSIS) printf("DEBUG: Unknown instruction at 0x%08x\n", i);
             i++;
             continue;
         }
 
         const Instruction* inst = get_instruction(code[0]);
         if (!inst) {
+            if (DEBUG_ANALYSIS) printf("DEBUG: Unknown opcode %02x at 0x%08x\n", code[0], i);
             i++;
             continue;
         }
 
+        if (DEBUG_ANALYSIS) printf("DEBUG: Sequence: %s (len=%zu) at 0x%08x\n", inst->name, len, i);
+
         // Count current instruction (length 1)
         increment_count(code, len);
+        sequence_count++;
 
         // Count pair with previous instruction (length 2)
         if (prev_bytes) {
@@ -265,6 +343,9 @@ void analyze_frequency(byte_file *bf) {
 
         i += len;
     }
+
+    print_function_calls(bf);
+    print_reachability_stats(bf, reachable);
 
     free(prev_bytes);
 

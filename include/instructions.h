@@ -6,7 +6,9 @@
 // Instruction flags
 #define INSTR_FLAG_JUMP   0x01
 #define INSTR_FLAG_CJUMP  0x02
-#define INSTR_FLAG_HALT   0x10
+#define INSTR_FLAG_HALT   0x10   // Terminal: END, RET, FAIL
+#define INSTR_FLAG_BREAK  0x20   // Breaks sequence but not terminal (CALL, CALLC)
+#define INSTR_FLAG_CALL   0x40   // Calls a function (should be reachable)
 
 // Instruction structure
 typedef struct {
@@ -43,26 +45,41 @@ static const Instruction init_table[] = {
     {0x19, "dup", 0, 0},
     {0x1A, "swap", 0, 0},
     {0x1B, "elem", 0, 0},
-    {0x20, "ld", 4, 0},
-    {0x30, "lda", 4, 0},
-    {0x40, "st", 4, 0},
+    {0x20, "ld_g", 4, 0},
+    {0x21, "ld_l", 4, 0},
+    {0x22, "ld_a", 4, 0},
+    {0x23, "ld_c", 4, 0},
+    {0x30, "lda_g", 4, 0},
+    {0x31, "lda_l", 4, 0},
+    {0x32, "lda_a", 4, 0},
+    {0x33, "lda_c", 4, 0},
+    {0x40, "st_g", 4, 0},
+    {0x41, "st_l", 4, 0},
+    {0x42, "st_a", 4, 0},
+    {0x43, "st_c", 4, 0},
     {0x50, "cjmp_z", 4, INSTR_FLAG_CJUMP},
     {0x51, "cjmp_nz", 4, INSTR_FLAG_CJUMP},
     {0x52, "begin", 8, 0},
     {0x53, "cbegin", 8, 0},
     {0x54, "closure", 8, 0},
-    {0x55, "callc", 4, 0},
-    {0x56, "call", 8, 0},
+    {0x55, "callc", 4, INSTR_FLAG_BREAK | INSTR_FLAG_CALL},
+    {0x56, "call", 8, INSTR_FLAG_BREAK | INSTR_FLAG_CALL},
     {0x57, "tag", 8, 0},
     {0x58, "array", 4, 0},
     {0x59, "fail", 8, INSTR_FLAG_HALT},
     {0x5A, "line", 4, 0},
-    {0x60, "patt", 1, 0},
-    {0x70, "call_read", 0, 0},
-    {0x71, "call_write", 0, 0},
-    {0x72, "call_length", 0, 0},
-    {0x73, "call_string", 0, 0},
-    {0x74, "call_array", 4, 0}
+    {0x60, "patt_str", 1, 0},
+    {0x61, "patt_string", 1, 0},
+    {0x62, "patt_array", 1, 0},
+    {0x63, "patt_sexp", 1, 0},
+    {0x64, "patt_ref", 1, 0},
+    {0x65, "patt_val", 1, 0},
+    {0x66, "patt_fun", 1, 0},
+    {0x70, "call_read", 0, INSTR_FLAG_BREAK | INSTR_FLAG_CALL},
+    {0x71, "call_write", 0, INSTR_FLAG_BREAK | INSTR_FLAG_CALL},
+    {0x72, "call_length", 0, INSTR_FLAG_BREAK | INSTR_FLAG_CALL},
+    {0x73, "call_string", 0, INSTR_FLAG_BREAK | INSTR_FLAG_CALL},
+    {0x74, "call_array", 4, INSTR_FLAG_BREAK | INSTR_FLAG_CALL}
 };
 
 extern Instruction* instructions[256];
