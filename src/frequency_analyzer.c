@@ -41,7 +41,7 @@ static void increment_count(const uint8_t *data, size_t len) {
 
 // Check if instruction is a control transfer (jump, call, etc.)
 static inline bool is_control_transfer(const Instruction* inst) {
-    return (inst->flags & (INSTR_FLAG_JUMP | INSTR_FLAG_CJUMP | INSTR_FLAG_CALL));
+    return (inst->flags & INSTR_FLAG_JUMP);
 }
 
 // Check if instruction is terminal (ends execution)
@@ -59,7 +59,7 @@ static inline bool is_terminal(const Instruction* inst) {
 
 // Check if instruction breaks a sequence (jump, call, halt)
 static inline bool split_after(const Instruction* inst) {
-    return (inst->flags & (INSTR_FLAG_HALT | INSTR_FLAG_BREAK));
+    return (inst->flags & INSTR_FLAG_BREAK);
 }
 
 // Get instruction by opcode; returns NULL if unknown
@@ -72,6 +72,21 @@ static inline const Instruction* get_instruction(uint8_t opcode) {
 static inline size_t instruction_length(const u_int8_t *code, size_t max_len) {
     if (max_len < 1) return 0;
     uint8_t opcode = code[0];
+
+    //TODO WIP fix
+    // Особая обработка для CLOSURE (0x54)
+    if (opcode == 0x54) {
+        if (max_len < 8) return 0; // Нужно как минимум 8 байт (ip + n)
+        // Читаем 'n' (количество захваченных переменных) со смещения 4
+        // В байткоде: 4 байта ip + 4 байта n + n * 5 байт varspec
+        u_int32_t n;
+        memcpy(&n, code + 4, 4);
+        // Длина = 8 (ip + n) + 5 * n (varspecs)
+        size_t total_len = 8 + (size_t)n * 5;
+        if (total_len > max_len) return 0; // Если слишком длинно, ошибка
+        return total_len;
+    }
+
     const Instruction* inst = get_instruction(opcode);
     if (!inst) return 0;
     return 1 + inst->arg_size;
