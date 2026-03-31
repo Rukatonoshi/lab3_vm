@@ -62,34 +62,9 @@ static inline bool split_after(const Instruction* inst) {
     return (inst->flags & INSTR_FLAG_BREAK);
 }
 
-// Get instruction by opcode; returns NULL if unknown
-static inline const Instruction* get_instruction(uint8_t opcode) {
-    if (opcode >= 256) return NULL;
-    return instructions[opcode];
-}
-
 // Return length of instruction in bytes, or 0 if unknown
-static inline size_t instruction_length(const u_int8_t *code, size_t max_len) {
-    if (max_len < 1) return 0;
-    uint8_t opcode = code[0];
-
-    //TODO WIP fix
-    // Особая обработка для CLOSURE (0x54)
-    if (opcode == 0x54) {
-        if (max_len < 8) return 0; // Нужно как минимум 8 байт (ip + n)
-        // Читаем 'n' (количество захваченных переменных) со смещения 4
-        // В байткоде: 4 байта ip + 4 байта n + n * 5 байт varspec
-        u_int32_t n;
-        memcpy(&n, code + 4, 4);
-        // Длина = 8 (ip + n) + 5 * n (varspecs)
-        size_t total_len = 8 + (size_t)n * 5;
-        if (total_len > max_len) return 0; // Если слишком длинно, ошибка
-        return total_len;
-    }
-
-    const Instruction* inst = get_instruction(opcode);
-    if (!inst) return 0;
-    return 1 + inst->arg_size;
+static inline size_t instruction_length_local(const uint8_t *code, size_t max_len) {
+    return get_instruction_length(code, max_len);
 }
 
 // Compare two entries: by frequency (descending), then by byte sequence (lexicographic)
@@ -231,7 +206,7 @@ void analyze_frequency(byte_file *bf) {
 
         const uint8_t *code = (const uint8_t*)bf->code_ptr + addr;
         size_t remaining = bf->code_size - addr;
-        size_t len = instruction_length(code, remaining);
+        size_t len = instruction_length_local(code, remaining);
 
         if (DEBUG_ANALYSIS) printf("DEBUG: Visiting addr 0x%08x, remaining=%zu, len=%zu\n", addr, remaining, len);
 
@@ -291,7 +266,7 @@ void analyze_frequency(byte_file *bf) {
                 reachable_count++;
             }
         }
-        printf("DEBUG: Total reachable bytes: %u (%.2f%%)\n", reachable_count, 
+        printf("DEBUG: Total reachable bytes: %u (%.2f%%)\n", reachable_count,
                (double)reachable_count / bf->code_size * 100);
     }
 
@@ -313,7 +288,7 @@ void analyze_frequency(byte_file *bf) {
 
         const uint8_t *code = (const uint8_t*)bf->code_ptr + i;
         size_t remaining = bf->code_size - i;
-        size_t len = instruction_length(code, remaining);
+        size_t len = instruction_length_local(code, remaining);
         if (len == 0) {
             if (DEBUG_ANALYSIS) printf("DEBUG: Unknown instruction at 0x%08x\n", i);
             i++;

@@ -6,7 +6,8 @@ CC = gcc
 
 # Флаги
 #CFLAGS = -m32 -Wall -Wextra -Werror -std=c99 -O2 -D_FILE_OFFSET_BITS=64 -Iinclude
-CFLAGS = -m32 -O2 -Iinclude
+#CFLAGS = -g2 -D_FILE_OFFSET_BITS=64 -Iinclude -fstack-protector-all
+CFLAGS = -m32 -O2 -Iinclude -fstack-protector-all
 
 # Библиотеки
 LIBS = -lm
