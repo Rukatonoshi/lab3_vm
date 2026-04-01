@@ -19,147 +19,92 @@
 #define VARLEN_DESCRIPTOR(code, name, flags, format_name, count_val)
 #endif
 
-#ifndef BINOP_LOW_BITS
-#define BINOP_LOW_BITS(code, name, op)
-#endif
-
-#ifndef LD_LOW_BITS
-#define LD_LOW_BITS(code, name)
-#endif
-
-#ifndef PATT_LOW_BITS
-#define PATT_LOW_BITS(code, name)
-#endif
-
-// BINARY OPERATIONS LOW BITS
-// These generate values 0x01-0x0D for BINOP group (high bits = 0x00)
-BINOP_LOW_BITS(01, ADD, +)
-BINOP_LOW_BITS(02, SUB, -)
-BINOP_LOW_BITS(03, MUL, *)
-BINOP_LOW_BITS(04, DIV, /)
-BINOP_LOW_BITS(05, REM, %)
-BINOP_LOW_BITS(06, LT, <)
-BINOP_LOW_BITS(07, LE, <=)
-BINOP_LOW_BITS(08, GT, >)
-BINOP_LOW_BITS(09, GE, >=)
-BINOP_LOW_BITS(0A, EQ, ==)
-BINOP_LOW_BITS(0B, NE, !=)
-BINOP_LOW_BITS(0C, AND, &&)
-BINOP_LOW_BITS(0D, OR, ||)
-
-// LDA/ST LOW BITS
-// These generate values 0x00-0x03 used by LD (0x20), LDA (0x30), ST (0x40), PATT (0x60) groups
-LD_LOW_BITS(00, GLOBAL)
-LD_LOW_BITS(01, LOCAL)
-LD_LOW_BITS(02, ARGUMENT)
-LD_LOW_BITS(03, CLOSURE)
-
-// PATT LOW BITS
-PATT_LOW_BITS(00, STR)
-PATT_LOW_BITS(01, TAG_STR)
-PATT_LOW_BITS(02, TAG_ARR)
-PATT_LOW_BITS(03, TAG_SEXP)
-PATT_LOW_BITS(04, BOXED)
-PATT_LOW_BITS(05, UNBOXED)
-PATT_LOW_BITS(06, TAG_CLOSURE)
-
 // FULL BYTE OPCODES
 // - Binary Operations (0x01 - 0x0D)
-INSTR(01, binop_add, 0, 0)         // PLUS
-INSTR(02, binop_sub, 0, 0)         // MINUS
-INSTR(03, binop_mul, 0, 0)         // MULTIPLY
-INSTR(04, binop_div, 0, 0)         // DIVIDE
-INSTR(05, binop_rem, 0, 0)         // REMAINDER
-INSTR(06, binop_lt, 0, 0)          // LESS
-INSTR(07, binop_le, 0, 0)          // LESS_EQUAL
-INSTR(08, binop_gt, 0, 0)          // GREATER
-INSTR(09, binop_ge, 0, 0)          // GREATER_EQUAL
-INSTR(0A, binop_eq, 0, 0)          // EQUAL
-INSTR(0B, binop_ne, 0, 0)          // NOT_EQUAL
-INSTR(0C, binop_and, 0, 0)         // AND
-INSTR(0D, binop_or, 0, 0)          // OR
+INSTR(01, BINOP_ADD, 0, 0)
+INSTR(02, BINOP_SUB, 0, 0)
+INSTR(03, BINOP_MUL, 0, 0)
+INSTR(04, BINOP_DIV, 0, 0)
+INSTR(05, BINOP_REM, 0, 0)
+INSTR(06, BINOP_LT, 0, 0)
+INSTR(07, BINOP_LE, 0, 0)
+INSTR(08, BINOP_GT, 0, 0)
+INSTR(09, BINOP_GE, 0, 0)
+INSTR(0A, BINOP_EQ, 0, 0)
+INSTR(0B, BINOP_NE, 0, 0)
+INSTR(0C, BINOP_AND, 0, 0)
+INSTR(0D, BINOP_OR, 0, 0)
 
 // - Constants & Strings (0x10 - 0x14)
-INSTR(10, const, 4, 0)             // CONST k
-INSTR(11, xstring, 4, 0)           // STRING s
-INSTR(12, sexp, 8, 0)              // SEXP s n
-INSTR(13, sti, 4, 0)               // store indirect
-INSTR(14, sta, 4, 0)               // store indirect to aggregate
+INSTR(10, const, 4, 0)
+INSTR(11, xstring, 4, 0)
+INSTR(12, sexp, 8, 0)
+INSTR(13, sti, 4, 0)
+INSTR(14, sta, 4, 0)
 
 // - Jumps & Control (0x15 - 0x1B)
-INSTR(15, jmp, 4, 0x07)            // JMP l (JUMP|HALT|BREAK)
-INSTR(16, end, 0, 0x06)            // END (HALT|BREAK)
-INSTR(17, ret, 0, 0x06)            // RET (HALT|BREAK)
-INSTR(18, drop, 0, 0)              // DROP
-INSTR(19, dup, 0, 0)               // DUP
-INSTR(1A, swap, 0, 0)              // SWAP
-INSTR(1B, elem, 0, 0)              // ELEM
+INSTR(15, jmp, 4, 0x07)
+INSTR(16, end, 0, 0x06)
+INSTR(17, ret, 0, 0x06)
+INSTR(18, drop, 0, 0)
+INSTR(19, dup, 0, 0)
+INSTR(1A, swap, 0, 0)
+INSTR(1B, elem, 0, 0)
 
 // - Load Instructions (0x20 - 0x23)
-INSTR(20, ld_g, 4, 0)              // LD global
-INSTR(21, ld_l, 4, 0)              // LD local
-INSTR(22, ld_a, 4, 0)              // LD argument
-INSTR(23, ld_c, 4, 0)              // LD closure
+INSTR(20, ld_g, 4, 0)
+INSTR(21, ld_l, 4, 0)
+INSTR(22, ld_a, 4, 0)
+INSTR(23, ld_c, 4, 0)
 
 // - Load Address Instructions (0x30 - 0x33)
-INSTR(30, lda_g, 4, 0)             // LDA global
-INSTR(31, lda_l, 4, 0)             // LDA local
-INSTR(32, lda_a, 4, 0)             // LDA argument
-INSTR(33, lda_c, 4, 0)             // LDA closure
+INSTR(30, lda_g, 4, 0)
+INSTR(31, lda_l, 4, 0)
+INSTR(32, lda_a, 4, 0)
+INSTR(33, lda_c, 4, 0)
 
 // - Store Instructions (0x40 - 0x43)
-INSTR(40, st_g, 4, 0)              // ST global
-INSTR(41, st_l, 4, 0)              // ST local
-INSTR(42, st_a, 4, 0)              // ST argument
-INSTR(43, st_c, 4, 0)              // ST closure
+INSTR(40, st_g, 4, 0)
+INSTR(41, st_l, 4, 0)
+INSTR(42, st_a, 4, 0)
+INSTR(43, st_c, 4, 0)
 
 // - Conditional Jumps (0x50 - 0x51)
-INSTR(50, cjmp_z, 4, 0x05)         // CJMPz l (JUMP|BREAK)
-INSTR(51, cjmp_nz, 4, 0x05)        // CJMPnz l (JUMP|BREAK)
+INSTR(50, cjmp_z, 4, 0x05)
+INSTR(51, cjmp_nz, 4, 0x05)
 
 // - Procedure & Closure (0x52 - 0x56)
-INSTR(52, begin, 8, 0)             // BEGIN a n
-INSTR(53, cbegin, 8, 0)            // CBEGIN a n
+INSTR(52, begin, 8, 0)
+INSTR(53, cbegin, 8, 0)
 
-// CLOSURE format descriptor:
-//   opcode (1) + ip:fixed(4) + n:count(4) @idx0 + varspec:repeat(5) from idx0
 BEGIN_FORMAT(closure_format)
-FORMAT_FIELD(FIELD_OP, 4, -1)   // ip: 4-byte fixed field
-FORMAT_FIELD(FIELD_COUNT, 4, 0) // n: count field, store at index 0
-FORMAT_FIELD(FIELD_OP, 5, 0)    // varspec: 5-byte field, repeat count[0] times
+FORMAT_FIELD(FIELD_OP, 4, -1)
+FORMAT_FIELD(FIELD_COUNT, 4, 0)
+FORMAT_FIELD(FIELD_OP, 5, 0)
 FORMAT_END
-VARLEN_DESCRIPTOR(54, closure, 0, closure_format, 3)  // CLOSURE with 3 field descriptors
+VARLEN_DESCRIPTOR(54, closure, 0, closure_format, 3)
 
-INSTR(55, callc, 4, 0x04)          // CALLC n (BREAK)
-INSTR(56, call, 8, 0x05)           // CALL l n (JUMP|BREAK)
+INSTR(55, callc, 4, 0x04)
+INSTR(56, call, 8, 0x05)
 
 // - Other Instructions (0x57 - 0x5A)
-INSTR(57, tag, 8, 0)               // TAG s n
-INSTR(58, array, 4, 0)             // ARRAY n
-INSTR(59, fail, 8, 0x06)           // FAIL ln col (HALT|BREAK)
-INSTR(5A, line, 4, 0)              // LINE ln
+INSTR(57, tag, 8, 0)
+INSTR(58, array, 4, 0)
+INSTR(59, fail, 8, 0x06)
+INSTR(5A, line, 4, 0)
 
 // - Pattern Matching (0x60 - 0x66)
-INSTR(60, patt_str, 1, 0)          // PATT =str
-INSTR(61, patt_string, 1, 0)       // PATT #string
-INSTR(62, patt_array, 1, 0)        // PATT #array
-INSTR(63, patt_sexp, 1, 0)         // PATT #sexp
-INSTR(64, patt_ref, 1, 0)          // PATT #ref
-INSTR(65, patt_val, 1, 0)          // PATT #val
-INSTR(66, patt_fun, 1, 0)          // PATT #fun
+INSTR(60, patt_str, 1, 0)
+INSTR(61, patt_string, 1, 0)
+INSTR(62, patt_array, 1, 0)
+INSTR(63, patt_sexp, 1, 0)
+INSTR(64, patt_ref, 1, 0)
+INSTR(65, patt_val, 1, 0)
+INSTR(66, patt_fun, 1, 0)
 
 // - Built-in Calls (0x70 - 0x74)
-INSTR(70, call_read, 0, 0x04)      // CALL Lread (BREAK)
-INSTR(71, call_write, 0, 0x04)     // CALL Lwrite (BREAK)
-INSTR(72, call_length, 0, 0x04)    // CALL Llength (BREAK)
-INSTR(73, call_string, 0, 0x04)    // CALL Lstring (BREAK)
-INSTR(74, call_array, 4, 0x04)     // CALL Barray (BREAK)
-
-// #undef INSTR
-// #undef VARLEN_DESCRIPTOR
-// #undef FORMAT_FIELD
-// #undef FORMAT_END
-// #undef BEGIN_FORMAT
-// #undef BINOP_LOW_BITS
-// #undef LD_LOW_BITS
-// #undef PATT_LOW_BITS
+INSTR(70, call_read, 0, 0x04)
+INSTR(71, call_write, 0, 0x04)
+INSTR(72, call_length, 0, 0x04)
+INSTR(73, call_string, 0, 0x04)
+INSTR(74, call_array, 4, 0x04)
