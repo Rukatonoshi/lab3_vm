@@ -6,11 +6,11 @@
 
 // Instruction flags
 // INSTR_FLAG_JUMP (0x01): Instructions that transfer control to a new address in the file
-//   JMP (0x15), CALL (0x56), CJMPz (0x50), CJMPnz (0x51)
+//   JMP (0x15), CALL (0x56), CALLC (0x55), CJMPz (0x50), CJMPnz (0x51)
 // INSTR_FLAG_HALT (0x02): Instructions that terminate a basic block (do not continue to 'next')
 //   JMP (0x15), END (0x16), RET (0x17), FAIL (0x59)
-// INSTR_FLAG_BREAK (0x04): Instructions that break idiom sequences
-//   CALL (0x56), CALLC (0x55), built-in calls (0x70-0x74)
+// INSTR_FLAG_BREAK (0x04): Instructions that break instruction sequences (reset sequence tracking)
+//   JMP (0x15), END (0x16), RET (0x17), FAIL (0x59), CJMPz (0x50), CJMPnz (0x51)
 
 #define INSTR_FLAG_JUMP     0x01
 #define INSTR_FLAG_HALT     0x02
