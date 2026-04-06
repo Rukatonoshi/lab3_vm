@@ -159,6 +159,29 @@ static void print_reachability_stats(byte_file *bf, uint8_t *reachable) {
     printf("Reachable code: %.2f%%\n", (double)reachable_count / bf->code_size * 100);
 }
 
+// Helper function to expand queue capacity (ensures memory efficiency for large files)
+static bool expand_queue(uint32_t **queue, uint32_t *capacity, uint32_t required_size) {
+    if (*capacity >= required_size) return true; // No expansion needed
+
+    // Calculate new capacity (double, but with safety limits)
+    uint32_t new_capacity = *capacity;
+    while (new_capacity < required_size && new_capacity < (1u << 30)) {
+        new_capacity *= 2;
+    }
+
+    // Safety check to prevent excessive memory allocation
+    if (new_capacity > (1u << 30)) { // Max 1GB queue for safety
+        new_capacity = required_size < (1u << 30) ? required_size : (1u << 30);
+    }
+
+    uint32_t *new_queue = (uint32_t*)realloc(*queue, new_capacity * sizeof(uint32_t));
+    if (!new_queue) return false;
+
+    *queue = new_queue;
+    *capacity = new_capacity;
+    return true;
+}
+
 // Main frequency analysis function
 // Implements static analyzer for 1-2 instruction sequences in Lama bytecode
 // 1. Performs reachability analysis using BFS from public symbols (entry points)
@@ -167,6 +190,8 @@ static void print_reachability_stats(byte_file *bf, uint8_t *reachable) {
 // 4. Handles transfer labels by breaking sequences at control flow points
 void analyze_frequency(byte_file *bf) {
     // Track reachable code bytes
+    // MEMORY: 1 byte per code byte (1GB input = 1GB reachability array)
+    // This is essential for O(1) reachability checks during sequence counting
     uint8_t *reachable = (uint8_t*)calloc(bf->code_size, 1);
     if (!reachable) {
         fprintf(stderr, "Couldn't allocate memory for bytecode (reachable)\n");
@@ -174,12 +199,16 @@ void analyze_frequency(byte_file *bf) {
     }
 
     // BFS queue for reachability analysis
-    uint32_t *queue = (uint32_t*)malloc(bf->code_size * sizeof(uint32_t));
+    // MEMORY: Dynamic allocation, grows as needed (worse case 4GB for 1GB input, but typically much less)
+    // Limits queue expansion to 1GB (1<<30 * 4 bytes) to prevent excessive memory usage
+    // Start with small capacity, expand as discovered reachable code grows
+    uint32_t initial_queue_capacity = (bf->code_size < 1024) ? bf->code_size : 1024;
+    uint32_t *queue = (uint32_t*)malloc(initial_queue_capacity * sizeof(uint32_t));
     if (!queue) {
         fprintf(stderr, "Couldn't allocate memory for bytecode (queue)\n");
         exit(1);
     }
-
+    uint32_t queue_capacity = initial_queue_capacity;
     uint32_t qhead = 0, qtail = 0;
 
     // Start BFS from all public symbols (program entry points)
@@ -195,6 +224,10 @@ void analyze_frequency(byte_file *bf) {
         }
         if (!reachable[addr]) {
             reachable[addr] = 1;
+            if (!expand_queue(&queue, &queue_capacity, qtail + 1)) {
+                fprintf(stderr, "Failed to expand queue for address 0x%08x\n", addr);
+                exit(1);
+            }
             queue[qtail++] = addr;
         }
     }
@@ -243,6 +276,10 @@ void analyze_frequency(byte_file *bf) {
                 const Instruction* target_inst = get_instruction(target_code[0]);
                 if (target_inst) {
                     reachable[target] = 1;
+                    if (!expand_queue(&queue, &queue_capacity, qtail + 1)) {
+                        fprintf(stderr, "Failed to expand queue for target address 0x%08x\n", target);
+                        exit(1);
+                    }
                     queue[qtail++] = target;
                     if (DEBUG_ANALYSIS)
                         printf("DEBUG: Enqueued jump target 0x%08x (%s)\n",
@@ -264,6 +301,10 @@ void analyze_frequency(byte_file *bf) {
                 const Instruction* next_inst = get_instruction(next_code[0]);
                 if (next_inst) {
                     reachable[next] = 1;
+                    if (!expand_queue(&queue, &queue_capacity, qtail + 1)) {
+                        fprintf(stderr, "Failed to expand queue for next address 0x%08x\n", next);
+                        exit(1);
+                    }
                     queue[qtail++] = next;
                 } else {
                     if (DEBUG_ANALYSIS)
